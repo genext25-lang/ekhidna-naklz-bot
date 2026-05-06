@@ -1,5 +1,6 @@
 const { Bot } = require('grammy');
 const { createClient } = require('@supabase/supabase-js');
+const express = require('express'); // Добавлено для веб-сервера Render
 require('dotenv').config();
 
 // === ПРОВЕРКА НАСТРОЕК ===
@@ -145,6 +146,19 @@ bot.command('help', async (ctx) => {
 // === КОМАНДА /ping (диагностика) ===
 bot.command('ping', async (ctx) => {
     await ctx.reply('🏓 Pong! Бот работает и подключён к Supabase.');
+});
+
+// === ПРОСТОЙ ВЕБ-СЕРВЕР ДЛЯ RENDER ===
+// Это нужно, чтобы Render не ругался на отсутствие открытого порта
+const app = express();
+const port = process.env.PORT || 10000;
+
+app.get('/', (req, res) => {
+    res.send('🦔 Бот Ехидны Наклз работает!');
+});
+
+app.listen(port, '0.0.0.0', () => {
+    console.log(`✅ Веб-сервер для health checks запущен на порту ${port}`);
 });
 
 // === ЗАПУСК БОТА ===
