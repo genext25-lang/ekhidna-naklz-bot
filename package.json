@@ -1,0 +1,14 @@
+{
+  "name": "ekhidna-naklz-bot",
+  "version": "1.0.0",
+  "description": "Telegram game bot",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "grammy": "^1.32.0",
+    "@supabase/supabase-js": "^2.49.1",
+    "dotenv": "^16.4.7"
+  }
+}
