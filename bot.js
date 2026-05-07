@@ -1,6 +1,6 @@
 const { Bot } = require('grammy');
 const { createClient } = require('@supabase/supabase-js');
-const express = require('express'); // Добавлено для веб-сервера Render
+const express = require('express');
 require('dotenv').config();
 
 // === ПРОВЕРКА НАСТРОЕК ===
@@ -77,14 +77,28 @@ bot.command('start', async (ctx) => {
                 `🦔 **Привет, ${firstName}!**\n\n` +
                 `Добро пожаловать в криминальный мир **Ехидны Наклз**.\n\n` +
                 `✅ Твой аккаунт создан и сохранён в базе данных.\n\n` +
-                `Используй команду /profile, чтобы посмотреть свой профиль.\n` +
-                `Используй /help для списка команд.`
+                `Нажми на кнопку, чтобы войти в игру.`,
+                {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: '🎮 ИГРАТЬ', web_app: { url: 'https://reliable-kringle-83dc61.netlify.app/' } }]
+                        ]
+                    }
+                }
             );
         } else {
             await ctx.reply(
                 `🦔 **С возвращением, ${firstName}!**\n\n` +
                 `Рады снова тебя видеть.\n\n` +
-                `Твой профиль уже в базе данных. Напиши /profile, чтобы посмотреть свой прогресс.`
+                `Твой профиль уже в базе данных.\n\n` +
+                `Нажми на кнопку, чтобы продолжить криминальную карьеру.`,
+                {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: '🎮 ИГРАТЬ', web_app: { url: 'https://reliable-kringle-83dc61.netlify.app/' } }]
+                        ]
+                    }
+                }
             );
         }
     } catch (err) {
@@ -96,43 +110,35 @@ bot.command('start', async (ctx) => {
 // === КОМАНДА /profile ===
 bot.command('profile', async (ctx) => {
     const userId = ctx.from.id.toString();
+    const username = ctx.from.username || 'без_имени';
 
     try {
-        // 1. Проверяем, видит ли бот userId
-        await ctx.reply(`🔍 Ищу пользователя с ID: ${userId}`);
-
+        // Ищем пользователя в Supabase
         const { data: user, error } = await supabase
             .from('users')
             .select('*')
             .eq('id', userId)
             .single();
 
-        // 2. Если ошибка — показываем её полностью
-        if (error) {
-            console.error('Supabase error:', error);
-            await ctx.reply(`❌ Ошибка Supabase:\n\`\`\`json\n${JSON.stringify(error, null, 2)}\n\`\`\``);
+        if (error || !user) {
+            await ctx.reply('❌ Профиль не найден. Напишите /start, чтобы зарегистрироваться.');
             return;
         }
 
-        // 3. Если пользователь не найден
-        if (!user) {
-            await ctx.reply('❌ Пользователь не найден в базе данных');
-            return;
-        }
-
-        // 4. Если всё ок — показываем профиль
         await ctx.reply(
-            `🎩 **ПРОФИЛЬ**\n\n` +
-            `ID: ${user.id}\n` +
-            `Username: @${user.username || 'нет'}\n` +
-            `XP: ${user.xp}\n` +
-            `Ранг: ${user.rank_level}\n` +
-            `Победы: ${user.wins} | Поражения: ${user.losses}\n` +
-            `Скин: ${user.current_skin}`
+            `🎩 **ПРОФИЛЬ ЕХИДНЫ НАКЛЗ**\n\n` +
+            `👤 Имя: @${user.username || username}\n` +
+            `🆔 ID: \`${user.id}\`\n` +
+            `⭐ Ранг: ${user.rank_level} (${getRankName(user.rank_level)})\n` +
+            `📊 Опыт (XP): ${user.xp}\n` +
+            `🏆 Победы: ${user.wins || 0} | 😵 Поражения: ${user.losses || 0}\n` +
+            `🎭 Текущий скин: ${user.current_skin || 'Обычная Ехидна'}\n\n` +
+            `💎 **NFT коллекция:** ${user.rank_level >= 2 ? 'Доступна' : 'Достигните ранга 2, чтобы получить первый NFT'}`,
+            { parse_mode: 'Markdown' }
         );
     } catch (err) {
-        console.error('Fatal error:', err);
-        await ctx.reply(`⚠️ Критическая ошибка: ${err.message}`);
+        console.error('Ошибка в /profile:', err);
+        await ctx.reply('⚠️ Ошибка при загрузке профиля. Попробуйте позже.');
     }
 });
 
