@@ -42,7 +42,6 @@ bot.command('start', async (ctx) => {
     const firstName = user.first_name || '';
 
     try {
-        // Проверяем, есть ли пользователь в базе
         const { data: existingUser, error: findError } = await supabase
             .from('users')
             .select('id')
@@ -53,7 +52,6 @@ bot.command('start', async (ctx) => {
             console.error('Ошибка поиска пользователя:', findError);
         }
 
-        // Если пользователя нет — создаём нового
         if (!existingUser) {
             const { error: insertError } = await supabase
                 .from('users')
@@ -74,10 +72,7 @@ bot.command('start', async (ctx) => {
             }
 
             await ctx.reply(
-                `🦔 **Привет, ${firstName}!**\n\n` +
-                `Добро пожаловать в криминальный мир **Ехидны Наклз**.\n\n` +
-                `✅ Твой аккаунт создан и сохранён в базе данных.\n\n` +
-                `Нажми на кнопку, чтобы войти в игру.`,
+                `🦔 Привет, ${firstName}!\n\nДобро пожаловать в мир Ехидны Наклз.\n\n✅ Твой аккаунт создан.\n\nНажми на кнопку, чтобы войти в игру.`,
                 {
                     reply_markup: {
                         inline_keyboard: [
@@ -88,10 +83,7 @@ bot.command('start', async (ctx) => {
             );
         } else {
             await ctx.reply(
-                `🦔 **С возвращением, ${firstName}!**\n\n` +
-                `Рады снова тебя видеть.\n\n` +
-                `Твой профиль уже в базе данных.\n\n` +
-                `Нажми на кнопку, чтобы продолжить криминальную карьеру.`,
+                `🦔 С возвращением, ${firstName}!\n\nТвой профиль уже в базе.\n\nНажми на кнопку, чтобы продолжить.`,
                 {
                     reply_markup: {
                         inline_keyboard: [
@@ -102,8 +94,8 @@ bot.command('start', async (ctx) => {
             );
         }
     } catch (err) {
-        console.error('Необработанная ошибка в /start:', err);
-        await ctx.reply('⚠️ Произошла техническая ошибка. Повторите позже.');
+        console.error('Ошибка в /start:', err);
+        await ctx.reply('⚠️ Техническая ошибка. Повторите позже.');
     }
 });
 
@@ -113,7 +105,6 @@ bot.command('profile', async (ctx) => {
     const username = ctx.from.username || 'без_имени';
 
     try {
-        // Ищем пользователя в Supabase
         const { data: user, error } = await supabase
             .from('users')
             .select('*')
@@ -121,71 +112,95 @@ bot.command('profile', async (ctx) => {
             .single();
 
         if (error || !user) {
-            await ctx.reply('❌ Профиль не найден. Напишите /start, чтобы зарегистрироваться.');
+            await ctx.reply('❌ Профиль не найден. Напишите /start.');
             return;
         }
 
         await ctx.reply(
-            `🎩 **ПРОФИЛЬ ЕХИДНЫ НАКЛЗ**\n\n` +
+            `🎩 ПРОФИЛЬ ЕХИДНЫ НАКЛЗ\n\n` +
             `👤 Имя: @${user.username || username}\n` +
-            `🆔 ID: \`${user.id}\`\n` +
+            `🆔 ID: ${user.id}\n` +
             `⭐ Ранг: ${user.rank_level} (${getRankName(user.rank_level)})\n` +
-            `📊 Опыт (XP): ${user.xp}\n` +
-            `🏆 Победы: ${user.wins || 0} | 😵 Поражения: ${user.losses || 0}\n` +
-            `🎭 Текущий скин: ${user.current_skin || 'Обычная Ехидна'}\n\n` +
-            `💎 **NFT коллекция:** ${user.rank_level >= 2 ? 'Доступна' : 'Достигните ранга 2, чтобы получить первый NFT'}`,
+            `📊 XP: ${user.xp}\n` +
+            `🏆 Победы: ${user.wins || 0} | Поражения: ${user.losses || 0}\n` +
+            `🎭 Скин: ${user.current_skin || 'Обычная Ехидна'}\n\n` +
+            `💎 NFT коллекция: ${user.rank_level >= 2 ? 'Доступна' : 'Достигните ранга 2 для первого NFT'}`,
             { parse_mode: 'Markdown' }
         );
     } catch (err) {
         console.error('Ошибка в /profile:', err);
-        await ctx.reply('⚠️ Ошибка при загрузке профиля. Попробуйте позже.');
+        await ctx.reply('⚠️ Ошибка при загрузке профиля.');
     }
 });
 
 // === КОМАНДА /help ===
 bot.command('help', async (ctx) => {
     await ctx.reply(
-        `📋 **Доступные команды бота:**\n\n` +
-        `/start — Зарегистрироваться или начать игру\n` +
-        `/profile — Посмотреть свой профиль (опыт, ранг, победы)\n` +
-        `/help — Показать это сообщение\n\n` +
-        `🎮 **Скоро появится:**\n` +
-        `• Игровое мини-приложение с режимами "Дуэль" и "Разборка"\n` +
-        `• Система комнат и ставок в TON\n` +
-        `• NFT-награды за достижения\n\n` +
-        `Следите за обновлениями! 🦔`
+        `📋 Доступные команды:\n\n` +
+        `/start — начало\n` +
+        `/profile — профиль\n` +
+        `/help — помощь\n\n` +
+        `🎮 Игровые режимы скоро: Дуэль, Разборка, комнаты, ставки TON, NFT.`
     );
 });
 
-// === КОМАНДА /ping (диагностика) ===
+// === КОМАНДА /ping ===
 bot.command('ping', async (ctx) => {
-    await ctx.reply('🏓 Pong! Бот работает и подключён к Supabase.');
+    await ctx.reply('🏓 Pong! Бот работает.');
 });
 
-// === ПРОСТОЙ ВЕБ-СЕРВЕР ДЛЯ RENDER ===
-// Это нужно, чтобы Render не ругался на отсутствие открытого порта
+// === ОБРАБОТКА ДАННЫХ ИЗ МИНИ-ПРИЛОЖЕНИЯ (КНОПКА ПРОФИЛЯ) ===
+bot.on('message:web_app_data', async (ctx) => {
+    const data = ctx.webAppData.data;
+    
+    if (data === '/profile') {
+        const userId = ctx.from.id.toString();
+        const username = ctx.from.username || 'без_имени';
+
+        try {
+            const { data: user, error } = await supabase
+                .from('users')
+                .select('*')
+                .eq('id', userId)
+                .single();
+
+            if (error || !user) {
+                await ctx.reply('❌ Профиль не найден. Напишите /start.');
+                return;
+            }
+
+            await ctx.reply(
+                `🎩 ПРОФИЛЬ\n\n` +
+                `👤 ${user.username || username}\n` +
+                `🆔 ${user.id}\n` +
+                `⭐ Ранг ${user.rank_level} (${getRankName(user.rank_level)})\n` +
+                `📊 XP ${user.xp}\n` +
+                `🏆 Победы ${user.wins || 0} | Поражения ${user.losses || 0}\n` +
+                `🎭 Скин ${user.current_skin || 'Обычная Ехидна'}`
+            );
+        } catch (err) {
+            console.error('Ошибка обработки web_app_data:', err);
+            await ctx.reply('⚠️ Ошибка загрузки профиля.');
+        }
+    } else {
+        await ctx.reply(`📩 Получены данные: ${data}`);
+    }
+});
+
+// === ВЕБ-СЕРВЕР ДЛЯ RENDER ===
 const app = express();
 const port = process.env.PORT || 10000;
 
 app.get('/', (req, res) => {
-    res.send('🦔 Бот Ехидны Наклз работает!');
+    res.send('🦔 Бот Ехидны Наклз работает');
 });
 
 app.listen(port, '0.0.0.0', () => {
-    console.log(`✅ Веб-сервер для health checks запущен на порту ${port}`);
+    console.log(`✅ Веб-сервер на порту ${port}`);
 });
 
-// === ЗАПУСК БОТА ===
+// === ЗАПУСК ===
 console.log('🦔 Бот Ехидны Наклз запускается...');
 bot.start()
-    .then(() => {
-        console.log('✅ Бот успешно запущен! Получение обновлений...');
-    })
-    .catch((err) => {
-        console.error('❌ Ошибка при запуске бота:');
-        console.error(err);
-        console.error('\n💡 Возможные причины:');
-        console.error('1. Нет интернета или заблокирован Telegram API');
-        console.error('2. Неверный BOT_TOKEN в файле .env');
-        console.error('3. На боте висит webhook (нужен сброс)');
-    });
+    .then(() => console.log('✅ Бот успешно запущен!'))
+    .catch(err => console.error('❌ Ошибка запуска:', err));
