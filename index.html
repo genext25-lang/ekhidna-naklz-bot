@@ -1,3 +1,4 @@
+html
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -101,10 +102,11 @@
     tg.enableClosingConfirmation();
 
     document.getElementById('profileBtn').addEventListener('click', () => {
-        tg.sendData('/profile');
+        // Открываем чат с ботом
+        tg.openTelegramLink('https://t.me/ekhidnanaklzbot');
         tg.showPopup({
             title: '📜 Профиль',
-            message: 'Данные отправлены. Проверьте чат с ботом.',
+            message: 'Переход в чат с ботом. Напишите /profile, чтобы посмотреть свой профиль.',
             buttons: [{type: 'ok'}]
         });
     });

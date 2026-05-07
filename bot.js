@@ -21,7 +21,7 @@ if (!supabaseUrl || !supabaseKey) {
 const bot = new Bot(token);
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// === ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ НАЗВАНИЙ РАНГОВ ===
+// === ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ===
 function getRankName(level) {
     const ranks = {
         1: 'Бродяга',
@@ -34,23 +34,58 @@ function getRankName(level) {
     return ranks[level] || 'Неизвестно';
 }
 
+// === ОБЩАЯ ФУНКЦИЯ ПОКАЗА ПРОФИЛЯ ===
+async function showProfile(ctx) {
+    const userId = ctx.from.id.toString();
+    const username = ctx.from.username || 'без_имени';
+
+    try {
+        const { data: user, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', userId)
+            .single();
+
+        if (error || !user) {
+            await ctx.reply('❌ Профиль не найден. Напишите /start, чтобы зарегистрироваться.');
+            return;
+        }
+
+        await ctx.reply(
+            `🎩 **ПРОФИЛЬ ЕХИДНЫ НАКЛЗ**\n\n` +
+            `👤 Имя: @${user.username || username}\n` +
+            `🆔 ID: \`${user.id}\`\n` +
+            `⭐ Ранг: ${user.rank_level} (${getRankName(user.rank_level)})\n` +
+            `📊 Опыт (XP): ${user.xp}\n` +
+            `🏆 Победы: ${user.wins || 0} | 😵 Поражения: ${user.losses || 0}\n` +
+            `🎭 Текущий скин: ${user.current_skin || 'Обычная Ехидна'}\n\n` +
+            `💎 **NFT коллекция:** ${user.rank_level >= 2 ? 'Доступна' : 'Достигните ранга 2, чтобы получить первый NFT'}`,
+            { parse_mode: 'Markdown' }
+        );
+    } catch (err) {
+        console.error('Ошибка в showProfile:', err);
+        await ctx.reply('⚠️ Ошибка при загрузке профиля.');
+    }
+}
+
 // === КОМАНДА /start ===
 bot.command('start', async (ctx) => {
+    const payload = ctx.match; // текст после /start
+    if (payload === 'profile') {
+        return showProfile(ctx);
+    }
+
     const user = ctx.from;
     const userId = user.id.toString();
     const username = user.username || 'без_имени';
     const firstName = user.first_name || '';
 
     try {
-        const { data: existingUser, error: findError } = await supabase
+        const { data: existingUser } = await supabase
             .from('users')
             .select('id')
             .eq('id', userId)
             .single();
-
-        if (findError && findError.code !== 'PGRST116') {
-            console.error('Ошибка поиска пользователя:', findError);
-        }
 
         if (!existingUser) {
             const { error: insertError } = await supabase
@@ -72,7 +107,7 @@ bot.command('start', async (ctx) => {
             }
 
             await ctx.reply(
-                `🦔 Привет, ${firstName}!\n\nДобро пожаловать в мир Ехидны Наклз.\n\n✅ Твой аккаунт создан.\n\nНажми на кнопку, чтобы войти в игру.`,
+                `🦔 **Привет, ${firstName}!**\n\nДобро пожаловать в мир Ехидны Наклз.\n\n✅ Твой аккаунт создан.\n\nНажми на кнопку, чтобы войти в игру.`,
                 {
                     reply_markup: {
                         inline_keyboard: [
@@ -83,7 +118,7 @@ bot.command('start', async (ctx) => {
             );
         } else {
             await ctx.reply(
-                `🦔 С возвращением, ${firstName}!\n\nТвой профиль уже в базе.\n\nНажми на кнопку, чтобы продолжить.`,
+                `🦔 **С возвращением, ${firstName}!**\n\nТвой профиль уже в базе.\n\nНажми на кнопку, чтобы продолжить.`,
                 {
                     reply_markup: {
                         inline_keyboard: [
@@ -101,36 +136,7 @@ bot.command('start', async (ctx) => {
 
 // === КОМАНДА /profile ===
 bot.command('profile', async (ctx) => {
-    const userId = ctx.from.id.toString();
-    const username = ctx.from.username || 'без_имени';
-
-    try {
-        const { data: user, error } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', userId)
-            .single();
-
-        if (error || !user) {
-            await ctx.reply('❌ Профиль не найден. Напишите /start.');
-            return;
-        }
-
-        await ctx.reply(
-            `🎩 ПРОФИЛЬ ЕХИДНЫ НАКЛЗ\n\n` +
-            `👤 Имя: @${user.username || username}\n` +
-            `🆔 ID: ${user.id}\n` +
-            `⭐ Ранг: ${user.rank_level} (${getRankName(user.rank_level)})\n` +
-            `📊 XP: ${user.xp}\n` +
-            `🏆 Победы: ${user.wins || 0} | Поражения: ${user.losses || 0}\n` +
-            `🎭 Скин: ${user.current_skin || 'Обычная Ехидна'}\n\n` +
-            `💎 NFT коллекция: ${user.rank_level >= 2 ? 'Доступна' : 'Достигните ранга 2 для первого NFT'}`,
-            { parse_mode: 'Markdown' }
-        );
-    } catch (err) {
-        console.error('Ошибка в /profile:', err);
-        await ctx.reply('⚠️ Ошибка при загрузке профиля.');
-    }
+    await showProfile(ctx);
 });
 
 // === КОМАНДА /help ===
@@ -147,44 +153,6 @@ bot.command('help', async (ctx) => {
 // === КОМАНДА /ping ===
 bot.command('ping', async (ctx) => {
     await ctx.reply('🏓 Pong! Бот работает.');
-});
-
-// === ОБРАБОТКА ДАННЫХ ИЗ МИНИ-ПРИЛОЖЕНИЯ (КНОПКА ПРОФИЛЯ) ===
-bot.on('message:web_app_data', async (ctx) => {
-    const data = ctx.webAppData.data;
-    
-    if (data === '/profile') {
-        const userId = ctx.from.id.toString();
-        const username = ctx.from.username || 'без_имени';
-
-        try {
-            const { data: user, error } = await supabase
-                .from('users')
-                .select('*')
-                .eq('id', userId)
-                .single();
-
-            if (error || !user) {
-                await ctx.reply('❌ Профиль не найден. Напишите /start.');
-                return;
-            }
-
-            await ctx.reply(
-                `🎩 ПРОФИЛЬ\n\n` +
-                `👤 ${user.username || username}\n` +
-                `🆔 ${user.id}\n` +
-                `⭐ Ранг ${user.rank_level} (${getRankName(user.rank_level)})\n` +
-                `📊 XP ${user.xp}\n` +
-                `🏆 Победы ${user.wins || 0} | Поражения ${user.losses || 0}\n` +
-                `🎭 Скин ${user.current_skin || 'Обычная Ехидна'}`
-            );
-        } catch (err) {
-            console.error('Ошибка обработки web_app_data:', err);
-            await ctx.reply('⚠️ Ошибка загрузки профиля.');
-        }
-    } else {
-        await ctx.reply(`📩 Получены данные: ${data}`);
-    }
 });
 
 // === ВЕБ-СЕРВЕР ДЛЯ RENDER ===
