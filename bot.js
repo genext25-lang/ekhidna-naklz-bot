@@ -23,7 +23,14 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 // === ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ РАНГОВ ===
 function getRankName(level) {
-    const ranks = { 1: 'Бродяга', 2: 'Шестёрка', 3: 'Боец', 4: 'Капо', 5: 'Консильери', 6: 'Дон' };
+    const ranks = { 
+        1: 'Бродяга', 
+        2: 'Шестёрка', 
+        3: 'Боец', 
+        4: 'Капо', 
+        5: 'Консильери', 
+        6: 'Дон' 
+    };
     return ranks[level] || 'Неизвестно';
 }
 
@@ -75,8 +82,13 @@ bot.command('start', async (ctx) => {
             .eq('id', roomId)
             .single();
 
-        if (error || !room || room.status !== 'waiting') {
-            await ctx.reply('❌ Комната не найдена или уже занята.');
+        if (error || !room) {
+            await ctx.reply('❌ Комната не найдена.');
+            return;
+        }
+        
+        if (room.status !== 'waiting') {
+            await ctx.reply('❌ Комната уже занята или игра началась.');
             return;
         }
 
@@ -95,7 +107,7 @@ bot.command('start', async (ctx) => {
             .eq('id', roomId);
 
         await ctx.reply(
-            `🎮 Игрок присоединился!\n\nСтавка: ${room.bet_amount} TON\nИгра началась!\n\nВыберите жест в мини-приложении:`,
+            `🎮 Вы присоединились к комнате!\n\nСтавка: ${room.bet_amount} TON\nИгра началась!\n\nВыберите жест в мини-приложении:`,
             {
                 reply_markup: {
                     inline_keyboard: [
@@ -210,8 +222,10 @@ bot.command('create_room', async (ctx) => {
 
 // === ОБРАБОТКА ВЫБОРА ЖЕСТА ИЗ МИНИ-ПРИЛОЖЕНИЯ ===
 bot.on('message:web_app_data', async (ctx) => {
-    const choice = ctx.webAppData.data; // 'rock', 'paper' или 'scissors'
+    const choice = ctx.webAppData.data;
     const userId = ctx.from.id.toString();
+
+    console.log(`📩 Выбор от ${userId}: ${choice}`);
 
     // Ищем активную комнату
     const { data: room, error } = await supabase
@@ -222,7 +236,7 @@ bot.on('message:web_app_data', async (ctx) => {
         .single();
 
     if (error || !room) {
-        await ctx.reply('❌ Нет активной игры. Создайте комнату через /create_room или присоединитесь к существующей.');
+        await ctx.reply('❌ Нет активной игры. Создайте комнату через /create_room');
         return;
     }
 
@@ -243,7 +257,6 @@ bot.on('message:web_app_data', async (ctx) => {
         .single();
 
     if (updatedRoom.creator_choice && updatedRoom.opponent_choice) {
-        // Определяем победителя
         const p1 = updatedRoom.creator_choice;
         const p2 = updatedRoom.opponent_choice;
         let result = '';
@@ -256,23 +269,20 @@ bot.on('message:web_app_data', async (ctx) => {
             (p1 === 'scissors' && p2 === 'paper') ||
             (p1 === 'paper' && p2 === 'rock')
         ) {
-            result = `Победил создатель комнаты! (${p1} vs ${p2})`;
+            result = `Победил создатель комнаты (${p1} vs ${p2})`;
             winnerId = updatedRoom.creator_id;
         } else {
-            result = `Победил соперник! (${p2} vs ${p1})`;
+            result = `Победил соперник (${p2} vs ${p1})`;
             winnerId = updatedRoom.opponent_id;
         }
 
         // Обновляем комнату
         await supabase
             .from('rooms')
-            .update({
-                status: 'finished',
-                winner_id: winnerId
-            })
+            .update({ status: 'finished', winner_id: winnerId })
             .eq('id', room.id);
 
-        // Обновляем статистику (wins/losses, XP, ранг)
+        // Обновляем статистику
         if (winnerId) {
             const loserId = winnerId === updatedRoom.creator_id ? updatedRoom.opponent_id : updatedRoom.creator_id;
             
@@ -288,14 +298,14 @@ bot.on('message:web_app_data', async (ctx) => {
                 .update({ losses: supabase.raw('losses + 1'), xp: supabase.raw('xp + 10') })
                 .eq('id', loserId);
             
-            // Обновляем ранги (ранг = 1 + floor(xp/100), максимум 6)
+            // Обновляем ранги
             await supabase
                 .from('users')
                 .update({ rank_level: supabase.raw('LEAST(6, 1 + FLOOR(xp / 100))') })
                 .in('id', [winnerId, loserId]);
         }
 
-        // Отправляем результат обоим игрокам
+        // Отправляем результат
         await bot.api.sendMessage(updatedRoom.creator_id, `🏆 Игра завершена! ${result}`);
         if (updatedRoom.opponent_id) {
             await bot.api.sendMessage(updatedRoom.opponent_id, `🏆 Игра завершена! ${result}`);
@@ -305,7 +315,7 @@ bot.on('message:web_app_data', async (ctx) => {
     }
 });
 
-// === КОМАНДА /testdb (диагностика) ===
+// === КОМАНДА /testdb ===
 bot.command('testdb', async (ctx) => {
     const userId = ctx.from.id.toString();
     try {
@@ -328,16 +338,22 @@ bot.command('testdb', async (ctx) => {
 // === ВЕБ-СЕРВЕР ДЛЯ RENDER ===
 const app = express();
 const port = process.env.PORT || 10000;
-app.get('/', (req, res) => res.send('🦔 Бот Ехидны Наклз работает'));
-app.listen(port, '0.0.0.0', () => console.log(`✅ Веб-сервер на порту ${port}`));
+
+app.get('/', (req, res) => {
+    res.send('🦔 Бот Ехидны Наклз работает');
+});
+
+app.listen(port, '0.0.0.0', () => {
+    console.log(`✅ Веб-сервер на порту ${port}`);
+});
 
 // === ЗАПУСК БОТА ===
 console.log('🦔 Бот Ехидны Наклз запускается...');
+
 bot.start()
-bot.on('message:web_app_data', async (ctx) => {
-    const data = ctx.webAppData.data;
-    console.log('📩 Получены данные из мини-приложения:', data);
-    await ctx.reply(`✅ Бот получил: ${data}`);
-});
-    .then(() => console.log('✅ Бот успешно запущен!'))
-    .catch(err => console.error('❌ Ошибка запуска:', err));
+    .then(() => {
+        console.log('✅ Бот успешно запущен!');
+    })
+    .catch((err) => {
+        console.error('❌ Ошибка запуска:', err);
+    });
