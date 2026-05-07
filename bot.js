@@ -334,5 +334,10 @@ app.listen(port, '0.0.0.0', () => console.log(`✅ Веб-сервер на по
 // === ЗАПУСК БОТА ===
 console.log('🦔 Бот Ехидны Наклз запускается...');
 bot.start()
+bot.on('message:web_app_data', async (ctx) => {
+    const data = ctx.webAppData.data;
+    console.log('📩 Получены данные из мини-приложения:', data);
+    await ctx.reply(`✅ Бот получил: ${data}`);
+});
     .then(() => console.log('✅ Бот успешно запущен!'))
     .catch(err => console.error('❌ Ошибка запуска:', err));
