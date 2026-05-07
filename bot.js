@@ -21,13 +21,13 @@ if (!supabaseUrl || !supabaseKey) {
 const bot = new Bot(token);
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
+// === ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ РАНГОВ ===
 function getRankName(level) {
     const ranks = { 1: 'Бродяга', 2: 'Шестёрка', 3: 'Боец', 4: 'Капо', 5: 'Консильери', 6: 'Дон' };
     return ranks[level] || 'Неизвестно';
 }
 
-// === ПРОФИЛЬ (БЕЗ MARKDOWN) ===
+// === ПОКАЗ ПРОФИЛЯ ===
 async function showProfile(ctx) {
     const userId = ctx.from.id.toString();
     const username = ctx.from.username || 'без_имени';
@@ -62,6 +62,64 @@ async function showProfile(ctx) {
 
 // === КОМАНДА /start ===
 bot.command('start', async (ctx) => {
+    const payload = ctx.match; // текст после /start
+
+    // --- ПРИСОЕДИНЕНИЕ К КОМНАТЕ ---
+    if (payload && payload.startsWith('room_')) {
+        const roomId = payload;
+        const userId = ctx.from.id.toString();
+
+        const { data: room, error } = await supabase
+            .from('rooms')
+            .select('*')
+            .eq('id', roomId)
+            .single();
+
+        if (error || !room || room.status !== 'waiting') {
+            await ctx.reply('❌ Комната не найдена или уже занята.');
+            return;
+        }
+
+        if (room.creator_id === userId) {
+            await ctx.reply('❌ Нельзя присоединиться к своей комнате.');
+            return;
+        }
+
+        // Обновляем комнату
+        await supabase
+            .from('rooms')
+            .update({
+                opponent_id: userId,
+                status: 'playing'
+            })
+            .eq('id', roomId);
+
+        await ctx.reply(
+            `🎮 Игрок присоединился!\n\nСтавка: ${room.bet_amount} TON\nИгра началась!\n\nВыберите жест в мини-приложении:`,
+            {
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '🎮 ИГРАТЬ', web_app: { url: 'https://reliable-kringle-83dc61.netlify.app/' } }]
+                    ]
+                }
+            }
+        );
+
+        await bot.api.sendMessage(
+            room.creator_id,
+            `🎮 Соперник присоединился!\n\nВыберите жест в мини-приложении:`,
+            {
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '🎮 ИГРАТЬ', web_app: { url: 'https://reliable-kringle-83dc61.netlify.app/' } }]
+                    ]
+                }
+            }
+        );
+        return;
+    }
+
+    // --- ОБЫЧНАЯ РЕГИСТРАЦИЯ /start ---
     const user = ctx.from;
     const userId = user.id.toString();
     const username = user.username || 'без_имени';
@@ -146,14 +204,108 @@ bot.command('create_room', async (ctx) => {
     }
 
     await ctx.reply(
-        `✅ Комната создана!\n\n` +
-        `Ставка: ${bet} TON\n` +
-        `Ссылка для соперника:\n` +
-        `https://t.me/EkhidnaNaklzBot?start=room_${roomId}`
+        `✅ Комната создана!\n\nСтавка: ${bet} TON\nСсылка для соперника:\nhttps://t.me/EkhidnaNaklzBot?start=${roomId}`
     );
 });
 
-// === КОМАНДА /testdb ===
+// === ОБРАБОТКА ВЫБОРА ЖЕСТА ИЗ МИНИ-ПРИЛОЖЕНИЯ ===
+bot.on('message:web_app_data', async (ctx) => {
+    const choice = ctx.webAppData.data; // 'rock', 'paper' или 'scissors'
+    const userId = ctx.from.id.toString();
+
+    // Ищем активную комнату
+    const { data: room, error } = await supabase
+        .from('rooms')
+        .select('*')
+        .or(`creator_id.eq.${userId},opponent_id.eq.${userId}`)
+        .eq('status', 'playing')
+        .single();
+
+    if (error || !room) {
+        await ctx.reply('❌ Нет активной игры. Создайте комнату через /create_room или присоединитесь к существующей.');
+        return;
+    }
+
+    const isCreator = (room.creator_id === userId);
+    const updateField = isCreator ? 'creator_choice' : 'opponent_choice';
+
+    // Сохраняем выбор
+    await supabase
+        .from('rooms')
+        .update({ [updateField]: choice })
+        .eq('id', room.id);
+
+    // Проверяем, оба ли сделали выбор
+    const { data: updatedRoom } = await supabase
+        .from('rooms')
+        .select('*')
+        .eq('id', room.id)
+        .single();
+
+    if (updatedRoom.creator_choice && updatedRoom.opponent_choice) {
+        // Определяем победителя
+        const p1 = updatedRoom.creator_choice;
+        const p2 = updatedRoom.opponent_choice;
+        let result = '';
+        let winnerId = '';
+
+        if (p1 === p2) {
+            result = 'Ничья!';
+        } else if (
+            (p1 === 'rock' && p2 === 'scissors') ||
+            (p1 === 'scissors' && p2 === 'paper') ||
+            (p1 === 'paper' && p2 === 'rock')
+        ) {
+            result = `Победил создатель комнаты! (${p1} vs ${p2})`;
+            winnerId = updatedRoom.creator_id;
+        } else {
+            result = `Победил соперник! (${p2} vs ${p1})`;
+            winnerId = updatedRoom.opponent_id;
+        }
+
+        // Обновляем комнату
+        await supabase
+            .from('rooms')
+            .update({
+                status: 'finished',
+                winner_id: winnerId
+            })
+            .eq('id', room.id);
+
+        // Обновляем статистику (wins/losses, XP, ранг)
+        if (winnerId) {
+            const loserId = winnerId === updatedRoom.creator_id ? updatedRoom.opponent_id : updatedRoom.creator_id;
+            
+            // Победителю: +1 победа, +50 XP
+            await supabase
+                .from('users')
+                .update({ wins: supabase.raw('wins + 1'), xp: supabase.raw('xp + 50') })
+                .eq('id', winnerId);
+            
+            // Проигравшему: +1 поражение, +10 XP
+            await supabase
+                .from('users')
+                .update({ losses: supabase.raw('losses + 1'), xp: supabase.raw('xp + 10') })
+                .eq('id', loserId);
+            
+            // Обновляем ранги (ранг = 1 + floor(xp/100), максимум 6)
+            await supabase
+                .from('users')
+                .update({ rank_level: supabase.raw('LEAST(6, 1 + FLOOR(xp / 100))') })
+                .in('id', [winnerId, loserId]);
+        }
+
+        // Отправляем результат обоим игрокам
+        await bot.api.sendMessage(updatedRoom.creator_id, `🏆 Игра завершена! ${result}`);
+        if (updatedRoom.opponent_id) {
+            await bot.api.sendMessage(updatedRoom.opponent_id, `🏆 Игра завершена! ${result}`);
+        }
+    } else {
+        await ctx.reply(`✅ Ваш выбор (${choice}) принят. Ожидаем выбора соперника...`);
+    }
+});
+
+// === КОМАНДА /testdb (диагностика) ===
 bot.command('testdb', async (ctx) => {
     const userId = ctx.from.id.toString();
     try {
@@ -173,13 +325,13 @@ bot.command('testdb', async (ctx) => {
     }
 });
 
-// === ВЕБ-СЕРВЕР ===
+// === ВЕБ-СЕРВЕР ДЛЯ RENDER ===
 const app = express();
 const port = process.env.PORT || 10000;
-app.get('/', (req, res) => res.send('🦔 Бот работает'));
+app.get('/', (req, res) => res.send('🦔 Бот Ехидны Наклз работает'));
 app.listen(port, '0.0.0.0', () => console.log(`✅ Веб-сервер на порту ${port}`));
 
-// === ЗАПУСК ===
+// === ЗАПУСК БОТА ===
 console.log('🦔 Бот Ехидны Наклз запускается...');
 bot.start()
     .then(() => console.log('✅ Бот успешно запущен!'))
