@@ -96,35 +96,43 @@ bot.command('start', async (ctx) => {
 // === КОМАНДА /profile ===
 bot.command('profile', async (ctx) => {
     const userId = ctx.from.id.toString();
-    const username = ctx.from.username || 'без_имени';
 
     try {
-        // Ищем пользователя в Supabase
+        // 1. Проверяем, видит ли бот userId
+        await ctx.reply(`🔍 Ищу пользователя с ID: ${userId}`);
+
         const { data: user, error } = await supabase
             .from('users')
             .select('*')
             .eq('id', userId)
             .single();
 
-        if (error || !user) {
-            await ctx.reply('❌ Профиль не найден. Напишите /start, чтобы зарегистрироваться.');
+        // 2. Если ошибка — показываем её полностью
+        if (error) {
+            console.error('Supabase error:', error);
+            await ctx.reply(`❌ Ошибка Supabase:\n\`\`\`json\n${JSON.stringify(error, null, 2)}\n\`\`\``);
             return;
         }
 
+        // 3. Если пользователь не найден
+        if (!user) {
+            await ctx.reply('❌ Пользователь не найден в базе данных');
+            return;
+        }
+
+        // 4. Если всё ок — показываем профиль
         await ctx.reply(
-            `🎩 **ПРОФИЛЬ ЕХИДНЫ НАКЛЗ**\n\n` +
-            `👤 Имя: @${user.username || username}\n` +
-            `🆔 ID: \`${user.id}\`\n` +
-            `⭐ Ранг: ${user.rank_level} (${getRankName(user.rank_level)})\n` +
-            `📊 Опыт (XP): ${user.xp}\n` +
-            `🏆 Победы: ${user.wins || 0} | 😵 Поражения: ${user.losses || 0}\n` +
-            `🎭 Текущий скин: ${user.current_skin || 'Обычная Ехидна'}\n\n` +
-            `💎 **NFT коллекция:** ${user.rank_level >= 2 ? 'Доступна' : 'Достигните ранга 2, чтобы получить первый NFT'}`,
-            { parse_mode: 'Markdown' }
+            `🎩 **ПРОФИЛЬ**\n\n` +
+            `ID: ${user.id}\n` +
+            `Username: @${user.username || 'нет'}\n` +
+            `XP: ${user.xp}\n` +
+            `Ранг: ${user.rank_level}\n` +
+            `Победы: ${user.wins} | Поражения: ${user.losses}\n` +
+            `Скин: ${user.current_skin}`
         );
     } catch (err) {
-        console.error('Ошибка в /profile:', err);
-        await ctx.reply('⚠️ Ошибка при загрузке профиля. Попробуйте позже.');
+        console.error('Fatal error:', err);
+        await ctx.reply(`⚠️ Критическая ошибка: ${err.message}`);
     }
 });
 
